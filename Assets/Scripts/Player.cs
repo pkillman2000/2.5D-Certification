@@ -18,9 +18,15 @@ public class Player : MonoBehaviour
     Vector3 _wallSurfaceNormal;
     [SerializeField]
     private float _pushVelocity;
+    private Animator _animator;
 
     private Vector3 _direction;
     private Vector3 _velocity;
+    private bool _jumpingFlag = false;
+    [SerializeField]
+    private GameObject _playerModel;
+    private bool _facingRight = true;
+    private bool _lastFacingStatus = true;
 
 
     void Start()
@@ -28,7 +34,13 @@ public class Player : MonoBehaviour
         _controller = GetComponent<CharacterController>();
         if(_controller == null)
         {
-            Debug.LogError("Character Controller is null!");
+            Debug.LogError("Character Controller is Null!");
+        }
+
+        _animator = GetComponentInChildren<Animator>();
+        if(_animator == null)
+        {
+            Debug.LogError("Animator is Null!");
         }
     }
 
@@ -39,17 +51,42 @@ public class Player : MonoBehaviour
 
     private void CalculateMovement()
     {
-        float horizontalInput = Input.GetAxis("Horizontal");
+        float horizontalInput = Input.GetAxisRaw("Horizontal"); // Making this GetAxisRaw stops smooth ramping up of values.  Will go from 0 to 1 or 0 to -1 instantly.
+        
+        // Rotate model to face correct direction
+        if(horizontalInput > 0 && !_facingRight)
+        {
+            _facingRight = true;
+            _playerModel.transform.localEulerAngles = new Vector3(0, 0, 0);
+        }
+
+        if (horizontalInput < 0 && _facingRight)
+        {
+            _facingRight = false;
+            _playerModel.transform.localEulerAngles = new Vector3(0, -180, 0);
+        }
+
+        // Animation Info
+        float absoluteSpeed = Mathf.Abs(horizontalInput); // Calculate absolute value of horizontal input
+        _animator.SetFloat("Speed", absoluteSpeed); // Set "Speed" value in Animator - Used for idle/walking/jumping
 
         if (_controller.isGrounded == true)
         {
             _canWallJump = true;
+            if(_jumpingFlag)// Only set animator if was jumping previously
+            {
+                _animator.SetBool("isJumping", false);
+                _jumpingFlag = false; // Not jumping anymore
+            }
             _direction = new Vector3(0, 0, horizontalInput);
             _velocity = _direction * _speed;
-            if (Input.GetKeyDown(KeyCode.Space))
+
+            if (Input.GetKeyDown(KeyCode.Space)) // Jumping
             {
+                _jumpingFlag = true;
                 _yVelocity = _jumpHeight;
                 _canDoubleJump = true;
+                _animator.SetBool("isJumping", _jumpingFlag);
             }
         }
         else
