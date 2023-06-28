@@ -26,8 +26,8 @@ public class Player : MonoBehaviour
     [SerializeField]
     private GameObject _playerModel;
     private bool _facingRight = true;
-    private bool _lastFacingStatus = true;
-
+    private Vector3 _currentIdlePosition;
+    private bool _isLedgeGrab = false;
 
     void Start()
     {
@@ -47,6 +47,11 @@ public class Player : MonoBehaviour
     void Update()
     {
         CalculateMovement();
+        
+        if(_isLedgeGrab && Input.GetKeyDown(KeyCode.E)) // Climb up ledge
+        {
+            ClimbLedge();
+        }
     }
 
     private void CalculateMovement()
@@ -139,5 +144,34 @@ public class Player : MonoBehaviour
             Vector3 pushDir = new Vector3(0, 0, hit.moveDirection.z);
             rigidbody.velocity = pushDir * _pushVelocity;
         }
+    }
+
+    public void LedgeGrab(Vector3 snapToPosition, Vector3 idlePosition) // Character jumps and snaps to ledge grabbing position
+    {
+        _controller.enabled = false; // Stop movement and gravity
+        _animator.SetBool("isLedgeGrab", true); // Start Ledge Grab animation  
+        this.transform.position = snapToPosition; // Snap player to correct position
+        _currentIdlePosition = idlePosition; // Store this for future use
+        _isLedgeGrab = true;
+    }
+
+    public void ClimbLedge() // Character animation climbs up onto ledge
+    {
+        _animator.SetTrigger("ClimbUp");
+        _animator.SetBool("isLedgeGrab", false);
+        _animator.SetBool("isJumping", false);
+        _animator.SetFloat("Speed", 0.0f);
+    }
+
+    /*
+     * Character goes to Idle Animation after climbing.
+     * At this point the character and animation are not in the same position.
+     */
+    public void ClimbToIdle() 
+    {
+        _isLedgeGrab = false;
+        _animator.ResetTrigger("ClimbUp");
+        this.transform.position = _currentIdlePosition; // Move character to Idle Position
+        _controller.enabled = true; // Turn Character Controller back on
     }
 }
