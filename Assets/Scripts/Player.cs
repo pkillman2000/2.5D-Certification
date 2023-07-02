@@ -28,7 +28,7 @@ public class Player : MonoBehaviour
     private bool _facingRight = true;
     private Vector3 _currentIdlePosition;
     private bool _isLedgeGrab = false;
-
+    private bool _isClimbingLadder = false;
     void Start()
     {
         _controller = GetComponent<CharacterController>();
@@ -51,6 +51,11 @@ public class Player : MonoBehaviour
         if(_isLedgeGrab && Input.GetKeyDown(KeyCode.E)) // Climb up ledge
         {
             ClimbLedge();
+        }
+
+        if(_isClimbingLadder && Input.GetKeyDown(KeyCode.E))
+        {
+            ClimbLadder();
         }
     }
 
@@ -75,7 +80,7 @@ public class Player : MonoBehaviour
         float absoluteSpeed = Mathf.Abs(horizontalInput); // Calculate absolute value of horizontal input
         _animator.SetFloat("Speed", absoluteSpeed); // Set "Speed" value in Animator - Used for idle/walking/jumping
 
-        if (_controller.isGrounded == true)
+        if (_controller.isGrounded == true) // Player is grounded
         {
             _canWallJump = true;
             if(_jumpingFlag)// Only set animator if was jumping previously
@@ -94,7 +99,7 @@ public class Player : MonoBehaviour
                 _animator.SetBool("isJumping", _jumpingFlag);
             }
         }
-        else
+        else // Player is not grounded
         {
             if (Input.GetKeyDown(KeyCode.Space) && _canWallJump == false) // Jump
             {
@@ -146,6 +151,7 @@ public class Player : MonoBehaviour
         }
     }
 
+    // Ledge Grab and Climb
     public void LedgeGrab(Vector3 snapToPosition, Vector3 idlePosition) // Character jumps and snaps to ledge grabbing position
     {
         _controller.enabled = false; // Stop movement and gravity
@@ -174,4 +180,26 @@ public class Player : MonoBehaviour
         this.transform.position = _currentIdlePosition; // Move character to Idle Position
         _controller.enabled = true; // Turn Character Controller back on
     }
+    // End of Ledge Grab and Climb
+
+    // Ladder Climb and Exit
+
+    public void StartClimbLadder()
+    {
+        _isClimbingLadder = true;
+        _controller.enabled = false;
+        _animator.SetBool("isClimbingLadder", true);
+        Debug.Log("Is Climbing Ladder");
+    }
+
+    public void ClimbLadder()
+    {
+
+    }
+
+    public void ClimbToTopOfLadder()
+    {
+
+    }
+
 }
