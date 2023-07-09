@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class OscillatingLift : MonoBehaviour
+public class OscillatingPlatform : MonoBehaviour
 {
     [SerializeField]
     private Vector3[] _floors; // 0 = top, 1 = bottom

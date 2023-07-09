@@ -8,8 +8,6 @@ public class LedgeGrabChecker : MonoBehaviour
     private Vector3 _playerSnapPosition; // This is the character position hanging from the ledge
     private Vector3 _playerIdlePosition; // This is the character position after the climb and in Idle animation
 
-    private bool _isClimbingLadder = false;
-
     private void Start()
     {
         _player = GetComponentInParent<Player>();
@@ -28,19 +26,16 @@ public class LedgeGrabChecker : MonoBehaviour
             _player.LedgeGrab(_playerSnapPosition, _playerIdlePosition);
         }
 
-        if (other.tag == "Ladder")
-        {
-            _isClimbingLadder = true;
-            _player.StartClimbLadder();
-        }
-    }
-
-    private void OnTriggerExit(Collider other)
-    {
         if(other.tag == "Ladder")
         {
-            _isClimbingLadder = false;
-            // Climb to top of ladder animation
+            _player.ClimbLadder();
+        }
+
+        if(other.tag == "LadderChecker")
+        {
+            _playerIdlePosition = other.GetComponent<LadderChecker>().GetPlayerIdlePosition();
+
+            _player.ClimbToTopOfLadder(_playerIdlePosition);
         }
     }
 }

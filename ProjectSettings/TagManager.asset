@@ -6,6 +6,10 @@ TagManager:
   tags:
   - Ledge_Checker
   - Ladder
+  - LadderChecker
+  - Platform
+  - Wall
+  - Ledge
   layers:
   - Default
   - TransparentFX

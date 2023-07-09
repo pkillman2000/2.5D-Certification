@@ -1,40 +1,54 @@
 using System.Collections;
 using System.Collections.Generic;
+using UnityEditor.ShaderGraph.Internal;
 using UnityEngine;
-using UnityEngine.SceneManagement;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
+using UnityEngine.Rendering.Universal;
 
 public class Player : MonoBehaviour
 {
-    private CharacterController _controller;
+    // Movement
+    [Header("Movement")]
     [SerializeField]
-    private float _speed = 5.0f;
+    private float _walkingSpeed = 5;
     [SerializeField]
-    private float _gravity = 1.0f;
+    private float _runningSpeed = 8; //*** TODO ***//
     [SerializeField]
-    private float _jumpHeight = 15.0f;
-    private float _yVelocity;
-    private bool _canDoubleJump = false;
-    private bool _canWallJump = false;
-    Vector3 _wallSurfaceNormal;
+    private float _jumpHeight = 400;
     [SerializeField]
-    private float _pushVelocity;
-    private Animator _animator;
+    private float _doubleJumpHeight = 600;
+    [SerializeField]
+    private float _climbingLadderSpeed = 1;
+    
+    private float _currentSpeed = 0;
+    private Input_Actions _inputActions;
+    private Rigidbody _rigidbody;
+    public bool _isGrounded;
+    public bool _canMove = true;
 
-    private Vector3 _direction;
-    private Vector3 _velocity;
-    private bool _jumpingFlag = false;
+    // Animation
+    [Header("Animation")]
     [SerializeField]
     private GameObject _playerModel;
-    private bool _facingRight = true;
+    private Animator _animator;
     private Vector3 _currentIdlePosition;
-    private bool _isLedgeGrab = false;
+    private bool _isLedgeClimb = false;
+    private Vector3 _modelDirection;
     private bool _isClimbingLadder = false;
-    void Start()
+    private bool _isRolling = false;
+
+    private void Start()
     {
-        _controller = GetComponent<CharacterController>();
-        if(_controller == null)
+
+        _inputActions = new Input_Actions();
+        if(_inputActions == null)
         {
-            Debug.LogError("Character Controller is Null!");
+            Debug.LogError("Player Input Actions is Null!");
+        }
+        else
+        {
+            _inputActions.Player.Enable();
         }
 
         _animator = GetComponentInChildren<Animator>();
@@ -42,164 +56,254 @@ public class Player : MonoBehaviour
         {
             Debug.LogError("Animator is Null!");
         }
-    }
 
-    void Update()
-    {
-        CalculateMovement();
-        
-        if(_isLedgeGrab && Input.GetKeyDown(KeyCode.E)) // Climb up ledge
+        _rigidbody = GetComponent<Rigidbody>();
         {
-            ClimbLedge();
+            if(_rigidbody == null)
+            {
+                Debug.LogWarning("Rigidbody is Null!");
+            }
         }
 
-        if(_isClimbingLadder && Input.GetKeyDown(KeyCode.E))
+        // Walk
+        _inputActions.Player.Walk.started += Walk_started;
+        _inputActions.Player.Walk.canceled += Walk_canceled;
+
+        // Jump
+        _inputActions.Player.Jump.performed += Jump_performed;
+
+        // Double Jump
+        _inputActions.Player.DoubleJump.performed += DoubleJump_performed;
+
+        // Ledge Grab
+        _inputActions.Player.Climb.performed += Climb_performed;
+
+        // Roll
+        _inputActions.Player.Roll.performed += Roll_performed;
+
+    }
+
+
+    private void Update()
+    {
+        if(_canMove)
         {
-            ClimbLadder();
+            CalculateMovement();
+        }
+
+        if(_isClimbingLadder)
+        {
+            ClimbingLadder();
         }
     }
 
     private void CalculateMovement()
     {
-        float horizontalInput = Input.GetAxisRaw("Horizontal"); // Making this GetAxisRaw stops smooth ramping up of values.  Will go from 0 to 1 or 0 to -1 instantly.
-        
-        // Rotate model to face correct direction
-        if(horizontalInput > 0 && !_facingRight)
-        {
-            _facingRight = true;
-            _playerModel.transform.localEulerAngles = new Vector3(0, 0, 0);
-        }
-
-        if (horizontalInput < 0 && _facingRight)
-        {
-            _facingRight = false;
-            _playerModel.transform.localEulerAngles = new Vector3(0, -180, 0);
-        }
-
-        // Animation Info
-        float absoluteSpeed = Mathf.Abs(horizontalInput); // Calculate absolute value of horizontal input
-        _animator.SetFloat("Speed", absoluteSpeed); // Set "Speed" value in Animator - Used for idle/walking/jumping
-
-        if (_controller.isGrounded == true) // Player is grounded
-        {
-            _canWallJump = true;
-            if(_jumpingFlag)// Only set animator if was jumping previously
-            {
-                _animator.SetBool("isJumping", false);
-                _jumpingFlag = false; // Not jumping anymore
-            }
-            _direction = new Vector3(0, 0, horizontalInput);
-            _velocity = _direction * _speed;
-
-            if (Input.GetKeyDown(KeyCode.Space)) // Jumping
-            {
-                _jumpingFlag = true;
-                _yVelocity = _jumpHeight;
-                _canDoubleJump = true;
-                _animator.SetBool("isJumping", _jumpingFlag);
-            }
-        }
-        else // Player is not grounded
-        {
-            if (Input.GetKeyDown(KeyCode.Space) && _canWallJump == false) // Jump
-            {
-                if (_canDoubleJump == true) // Double Jump
-                {
-                    _yVelocity += _jumpHeight;
-                    _canDoubleJump = false;
-                }
-            }
-
-            if (Input.GetKeyDown(KeyCode.Space) && _canWallJump == true) // Wall Jump
-            {
-                _yVelocity += _jumpHeight;
-                _velocity = _wallSurfaceNormal * _speed;
-                _canWallJump = false;
-            }
-
-            _yVelocity -= _gravity;
-        }
-
-        _velocity.y = _yVelocity;
-
-        if (_controller.enabled == true)
-        {
-            _controller.Move(_velocity * Time.deltaTime);
-        }
-
+        transform.Translate(0, 0, _currentSpeed);
     }
 
-    private void OnControllerColliderHit(ControllerColliderHit hit)
+    // Movement
+    private void Walk_started(InputAction.CallbackContext obj)
     {
-        if (!_controller.isGrounded && hit.gameObject.tag == "Wall") // Wall Jumping
+        _currentSpeed = _walkingSpeed * obj.ReadValue<float>() * Time.deltaTime;
+        if(_isRolling) // Slow motion for rolling animation
         {
-            _canWallJump = true;
-            _wallSurfaceNormal = hit.normal;
+            _currentSpeed = _currentSpeed / 2;
         }
-
-        if (hit.gameObject.tag == "Movable") // Pushing Movables
+        if (_canMove)
         {
-            Rigidbody rigidbody = hit.collider.attachedRigidbody;
-            if (rigidbody == null || rigidbody.isKinematic)
+            if (_isGrounded)// Only animate walking when on ground.
             {
-                Debug.LogWarning("Moveable Rigidbody Problems!");
-                return;
+                float absoluteSpeed = Mathf.Abs(_currentSpeed); // Walking Animation
+                _animator.SetFloat("Speed", absoluteSpeed);
+            }
+            else
+            {
             }
 
-            Vector3 pushDir = new Vector3(0, 0, hit.moveDirection.z);
-            rigidbody.velocity = pushDir * _pushVelocity;
+            if (_currentSpeed > 0) // Rotate model to correct direction
+            {
+                //_facingRight = true;
+                _playerModel.transform.localEulerAngles = new Vector3(0, 0, 0);
+            }
+            else if (_currentSpeed < 0)
+            {
+                _playerModel.transform.localEulerAngles = new Vector3(0, 180, 0);
+            }
+        }
+        else
+        {
+            _animator.SetFloat("Speed", 0);
+        }
+    }
+
+    private void Walk_canceled(InputAction.CallbackContext obj)
+    {
+        _currentSpeed = 0;
+        _animator.SetFloat("Speed", 0);
+    }
+
+    // Jumping
+    private void Jump_performed(InputAction.CallbackContext obj) // Jump
+    {
+        if(_isGrounded && _canMove) 
+        {
+            _rigidbody.AddForce(Vector3.up * _jumpHeight);
+        }
+    }
+
+    private void DoubleJump_performed(InputAction.CallbackContext obj) // Double Jump
+    {
+        if (_isGrounded)
+        {            
+            _rigidbody.AddForce(Vector3.up * _doubleJumpHeight);
+        }
+    }
+
+    
+    private void OnTriggerStay(Collider other)
+    {
+        if (other.tag == "Platform")
+        {
+            _isGrounded = true;
+            _animator.SetBool("isJumping", false);
+        }
+    }
+    
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.tag == "Platform")
+        {
+            _isGrounded = true;
+            _animator.SetBool("isJumping", false);
+
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.tag == "Platform") 
+        {
+            _isGrounded = false;
+            if(!_isClimbingLadder)
+            {
+                _animator.SetBool("isJumping", true);
+            }
         }
     }
 
     // Ledge Grab and Climb
-    public void LedgeGrab(Vector3 snapToPosition, Vector3 idlePosition) // Character jumps and snaps to ledge grabbing position
+
+    private void Climb_performed(InputAction.CallbackContext obj)
     {
-        _controller.enabled = false; // Stop movement and gravity
-        _animator.SetBool("isLedgeGrab", true); // Start Ledge Grab animation  
-        this.transform.position = snapToPosition; // Snap player to correct position
-        _currentIdlePosition = idlePosition; // Store this for future use
-        _isLedgeGrab = true;
+        if(_isLedgeClimb)
+        {
+            ClimbLedge();
+        }
     }
 
-    public void ClimbLedge() // Character animation climbs up onto ledge
+    public void LedgeGrab(Vector3 snapToPosition, Vector3 idlePosition)
+    {
+        _currentIdlePosition = idlePosition;
+        _rigidbody.useGravity = false;
+        _rigidbody.velocity = Vector3.zero;
+        
+        _canMove = false;
+        _isLedgeClimb = true;
+        this.transform.position = snapToPosition;
+        _animator.SetFloat("Speed", 0);
+        _animator.SetBool("isLedgeGrab", true);
+        _animator.SetBool("isJumping", false);
+    }
+
+    public void ClimbLedge()
     {
         _animator.SetTrigger("ClimbUp");
         _animator.SetBool("isLedgeGrab", false);
         _animator.SetBool("isJumping", false);
-        _animator.SetFloat("Speed", 0.0f);
     }
 
-    /*
-     * Character goes to Idle Animation after climbing.
-     * At this point the character and animation are not in the same position.
-     */
-    public void ClimbToIdle() 
+    public void ClimbToIdle()
     {
-        _isLedgeGrab = false;
         _animator.ResetTrigger("ClimbUp");
-        this.transform.position = _currentIdlePosition; // Move character to Idle Position
-        _controller.enabled = true; // Turn Character Controller back on
+        _rigidbody.useGravity = true;
+        _canMove = true;
+        this.transform.position = _currentIdlePosition;
     }
-    // End of Ledge Grab and Climb
+    // End Ledge Grab and Climb
 
-    // Ladder Climb and Exit
-
-    public void StartClimbLadder()
-    {
-        _isClimbingLadder = true;
-        _controller.enabled = false;
-        _animator.SetBool("isClimbingLadder", true);
-        Debug.Log("Is Climbing Ladder");
-    }
-
+    // Ladder Climb
     public void ClimbLadder()
     {
+        Vector3 currentPosition = this.transform.position;
+        _isClimbingLadder = true;
+        _rigidbody.useGravity = false;
+        _rigidbody.velocity = Vector3.zero;
+        _animator.SetFloat("Speed", 0);
+        _animator.SetBool("isJumping", false);
+        _canMove = false;
+        _modelDirection = _playerModel.transform.localEulerAngles;
 
+        _animator.SetBool("isClimbingLadder", true);
+        
+        if(_modelDirection.y == 0)
+        {
+            _modelDirection.y = 180;
+        }
+        else
+        {
+            _modelDirection.y = 0;
+        }        
+        _playerModel.transform.localEulerAngles = _modelDirection;
+        this.transform.position = currentPosition;
     }
 
-    public void ClimbToTopOfLadder()
+    public void ClimbingLadder()
     {
-
+        transform.Translate(0, _climbingLadderSpeed * Time.deltaTime, 0);
     }
 
+    public void ClimbToTopOfLadder(Vector3 idlePosition)
+    {
+        if(_isClimbingLadder)
+        {
+            _currentIdlePosition = idlePosition;
+            _rigidbody.velocity = Vector3.zero;
+            _modelDirection = _playerModel.transform.localEulerAngles;
+            _animator.SetTrigger("isTopOfLadder");
+            if (_modelDirection.y == 0)
+            {
+                _modelDirection.y = 180;
+            }
+            else
+            {
+                _modelDirection.y = 0;
+            }
+            _playerModel.transform.localEulerAngles = _modelDirection;
+        }
+    }
+
+    public void ClimbLadderToIdle()
+    {
+        _animator.SetBool("isClimbingLadder", false);
+        _rigidbody.useGravity = true;
+        _canMove = true;
+        _isClimbingLadder = false;
+        this.transform.position = _currentIdlePosition;
+    }
+    // End Climb Ladder
+
+    // Rolling
+    private void Roll_performed(InputAction.CallbackContext obj)
+    {
+        _animator.SetTrigger("Roll");
+        _isRolling = true;
+    }
+
+    public void EndRoll()
+    {
+        _animator.ResetTrigger("Roll");
+        _isRolling = false;
+    }
+    // End Rolling
 }
